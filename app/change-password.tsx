@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -29,11 +29,27 @@ export default function ChangePasswordScreen() {
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [maskedEmail, setMaskedEmail] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const otpInputRef = useRef<TextInput>(null);
+
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [emailMissingWarning, setEmailMissingWarning] = useState("");
 
-  const handleChangePassword = async () => {
+  useEffect(() => {
+    let timer: any;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown((prev) => prev - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleRequestOtp = async () => {
     setErrorMsg("");
+    setEmailMissingWarning("");
 
     if (!currentPassword.trim()) {
       const msg = "Please enter your current password.";
@@ -47,8 +63,8 @@ export default function ChangePasswordScreen() {
       Toast.show({ type: "error", text1: "Validation Error", text2: msg });
       return;
     }
-    if (newPassword.length < 4) {
-      const msg = "New password must be at least 4 characters.";
+    if (newPassword.length < 6) {
+      const msg = "New password must be at least 6 characters.";
       setErrorMsg(msg);
       Toast.show({ type: "error", text1: "Validation Error", text2: msg });
       return;
@@ -62,11 +78,59 @@ export default function ChangePasswordScreen() {
 
     setLoading(true);
     try {
-      await authService.changePassword(currentPassword.trim(), newPassword.trim());
+      const resData = await authService.requestChangePasswordOtp(
+        currentPassword.trim(),
+        newPassword.trim()
+      );
+      const masked = resData?.maskedEmail || "your registered email";
+      setMaskedEmail(masked);
+      setOtpCode("");
+      setOtpStep(true);
+      setResendCooldown(30);
 
       Toast.show({
         type: "success",
-        text1: "Password Updated 🔒",
+        text1: "OTP Sent",
+        text2: `A 6-digit verification code has been sent to ${masked}.`,
+      });
+
+      setTimeout(() => {
+        otpInputRef.current?.focus();
+      }, 250);
+    } catch (err: any) {
+      const msg = err.message || "Failed to send verification OTP.";
+      if (err.emailMissing) {
+        setEmailMissingWarning(msg);
+      } else {
+        setErrorMsg(msg);
+      }
+      Toast.show({ type: "error", text1: "Request Failed", text2: msg });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmChangePassword = async () => {
+    setErrorMsg("");
+    const cleanOtp = otpCode.trim();
+    if (cleanOtp.length !== 6) {
+      const msg = "Please enter the complete 6-digit verification code.";
+      setErrorMsg(msg);
+      Toast.show({ type: "error", text1: "Validation Error", text2: msg });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await authService.changePassword(
+        currentPassword.trim(),
+        newPassword.trim(),
+        cleanOtp
+      );
+
+      Toast.show({
+        type: "success",
+        text1: "Password Updated",
         text2: "Your password has been changed successfully.",
       });
 
@@ -81,13 +145,15 @@ export default function ChangePasswordScreen() {
         ]
       );
     } catch (err: any) {
-      const msg = err.message || "Failed to change password. Please check your current password.";
+      const msg = err.message || "Failed to change password.";
       setErrorMsg(msg);
       Toast.show({ type: "error", text1: "Update Failed", text2: msg });
     } finally {
       setLoading(false);
     }
   };
+
+  const digits = otpCode.split("");
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top", "left", "right"]}>
@@ -112,13 +178,23 @@ export default function ChangePasswordScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Top Info Banner */}
-          <View style={[styles.infoBanner, { backgroundColor: colors.primaryLight }]}>
-            <Ionicons name="shield-checkmark-outline" size={24} color={colors.primary} />
-            <Text style={[styles.infoBannerText, { color: colors.primary }]}>
-              Enter your current password (or Date of Birth, e.g. DD-MM-YYYY) followed by a secure new password of at least 4 characters.
-            </Text>
-          </View>
+          {/* Missing Email Warning Banner */}
+          {!!emailMissingWarning && (
+            <View
+              style={[
+                styles.warningBox,
+                {
+                  backgroundColor: isDark ? "#451A03" : "#FEF3C7",
+                  borderColor: isDark ? "#78350F" : "#FDE68A",
+                },
+              ]}
+            >
+              <Ionicons name="warning-outline" size={20} color="#D97706" />
+              <Text style={[styles.warningText, { color: isDark ? "#FCD34D" : "#991B1B" }]}>
+                {emailMissingWarning}
+              </Text>
+            </View>
+          )}
 
           {/* Error Banner */}
           {!!errorMsg && (
@@ -130,112 +206,226 @@ export default function ChangePasswordScreen() {
             </View>
           )}
 
-          {/* Form Fields */}
-          <View style={styles.formContainer}>
-            {/* Current Password */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>Current Password</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
-                <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.textInput, { color: colors.textPrimary }]}
-                  placeholder="Enter current password"
-                  placeholderTextColor={colors.textMuted}
-                  secureTextEntry={!showCurrentPass}
-                  value={currentPassword}
-                  onChangeText={setCurrentPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowCurrentPass(!showCurrentPass)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons
-                    name={showCurrentPass ? "eye-off-outline" : "eye-outline"}
-                    size={20}
-                    color={colors.textMuted}
+          {!otpStep ? (
+            <View style={styles.formContainer}>
+              {/* Current Password */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>Current Password</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
+                  <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.textInput, { color: colors.textPrimary }]}
+                    placeholder="Enter current password"
+                    placeholderTextColor={colors.textMuted}
+                    secureTextEntry={!showCurrentPass}
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
                   />
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setShowCurrentPass(!showCurrentPass)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons
+                      name={showCurrentPass ? "eye-off-outline" : "eye-outline"}
+                      size={20}
+                      color={colors.textMuted}
+                    />
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.helperText, { color: colors.textMuted }]}>
+                  Default password is your Date of Birth (DD-MM-YYYY)
+                </Text>
               </View>
-              <Text style={[styles.helperText, { color: colors.textMuted }]}>
-                Default password is your Date of Birth (DD-MM-YYYY)
+
+              {/* New Password */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>
+                  New Password{" "}
+                  <Text style={{ fontWeight: "400", fontSize: 12, color: colors.textMuted }}>
+                    (min. 6 characters)
+                  </Text>
+                </Text>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
+                  <Ionicons name="key-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.textInput, { color: colors.textPrimary }]}
+                    placeholder="Enter new password"
+                    placeholderTextColor={colors.textMuted}
+                    secureTextEntry={!showNewPass}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowNewPass(!showNewPass)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons
+                      name={showNewPass ? "eye-off-outline" : "eye-outline"}
+                      size={20}
+                      color={colors.textMuted}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Confirm New Password */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>Confirm New Password</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
+                  <Ionicons name="checkmark-done-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.textInput, { color: colors.textPrimary }]}
+                    placeholder="Re-enter new password"
+                    placeholderTextColor={colors.textMuted}
+                    secureTextEntry={!showConfirmPass}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowConfirmPass(!showConfirmPass)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons
+                      name={showConfirmPass ? "eye-off-outline" : "eye-outline"}
+                      size={20}
+                      color={colors.textMuted}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Submit Button */}
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
+                onPress={handleRequestOtp}
+                disabled={loading}
+                activeOpacity={0.8}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" />
+                    <Text style={styles.submitButtonText}>Update Password</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.formContainer}>
+              <Text style={[styles.otpTitle, { color: colors.textPrimary }]}>
+                Verify 6-Digit Email OTP
               </Text>
-            </View>
+              <Text style={[styles.otpSubtitle, { color: colors.textSecondary }]}>
+                Enter the 6-digit verification code sent to{" "}
+                <Text style={{ fontWeight: "700", color: colors.textPrimary }}>{maskedEmail}</Text>.
+              </Text>
 
-            {/* New Password */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>New Password</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
-                <Ionicons name="key-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+              <TouchableOpacity
+                style={styles.otpContainer}
+                activeOpacity={1}
+                onPress={() => otpInputRef.current?.focus()}
+              >
+                {[0, 1, 2, 3, 4, 5].map((index) => {
+                  const digit = digits[index] || "";
+                  const isCurrent =
+                    otpCode.length === index || (otpCode.length === 6 && index === 5);
+                  return (
+                    <View
+                      key={index}
+                      style={[
+                        styles.digitBox,
+                        {
+                          backgroundColor: colors.inputBg,
+                          borderColor: isCurrent || digit ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.digitText,
+                          { color: digit ? colors.textPrimary : colors.textMuted },
+                        ]}
+                      >
+                        {digit || "•"}
+                      </Text>
+                    </View>
+                  );
+                })}
                 <TextInput
-                  style={[styles.textInput, { color: colors.textPrimary }]}
-                  placeholder="Enter new password (min. 4 chars)"
-                  placeholderTextColor={colors.textMuted}
-                  secureTextEntry={!showNewPass}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
+                  ref={otpInputRef}
+                  style={styles.hiddenOtpInput}
+                  value={otpCode}
+                  onChangeText={(text) =>
+                    setOtpCode(text.replace(/[^0-9]/g, "").slice(0, 6))
+                  }
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  autoFocus
                 />
+              </TouchableOpacity>
+
+              <View style={styles.otpActionsRow}>
                 <TouchableOpacity
-                  onPress={() => setShowNewPass(!showNewPass)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  onPress={() => {
+                    setOtpStep(false);
+                    setOtpCode("");
+                    setErrorMsg("");
+                  }}
+                  disabled={loading}
                 >
-                  <Ionicons
-                    name={showNewPass ? "eye-off-outline" : "eye-outline"}
-                    size={20}
-                    color={colors.textMuted}
-                  />
+                  <Text style={[styles.linkText, { color: colors.textSecondary }]}>
+                    Back
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleRequestOtp}
+                  disabled={resendCooldown > 0 || loading}
+                >
+                  <Text
+                    style={[
+                      styles.linkText,
+                      {
+                        color: resendCooldown > 0 ? colors.textMuted : colors.primary,
+                        fontWeight: "700",
+                      },
+                    ]}
+                  >
+                    {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend OTP"}
+                  </Text>
                 </TouchableOpacity>
               </View>
-            </View>
 
-            {/* Confirm New Password */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>Confirm New Password</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
-                <Ionicons name="checkmark-done-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.textInput, { color: colors.textPrimary }]}
-                  placeholder="Re-enter new password"
-                  placeholderTextColor={colors.textMuted}
-                  secureTextEntry={!showConfirmPass}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowConfirmPass(!showConfirmPass)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons
-                    name={showConfirmPass ? "eye-off-outline" : "eye-outline"}
-                    size={20}
-                    color={colors.textMuted}
-                  />
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                style={[
+                  styles.submitButton,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: loading || otpCode.length !== 6 ? 0.65 : 1,
+                  },
+                ]}
+                onPress={handleConfirmChangePassword}
+                disabled={loading || otpCode.length !== 6}
+                activeOpacity={0.8}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                    <Text style={styles.submitButtonText}>Confirm & Update Password</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
-
-            {/* Submit Button */}
-            <TouchableOpacity
-              style={[styles.submitButton, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
-              onPress={handleChangePassword}
-              disabled={loading}
-              activeOpacity={0.8}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" />
-                  <Text style={styles.submitButtonText}>Update Password</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -264,15 +454,16 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
-  infoBanner: {
+  warningBox: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-    borderRadius: 14,
-    gap: 12,
-    marginBottom: 20,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 10,
+    marginBottom: 16,
   },
-  infoBannerText: {
+  warningText: {
     flex: 1,
     fontSize: 13,
     lineHeight: 18,
@@ -292,6 +483,10 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     gap: 18,
+  },
+  requirementNote: {
+    fontSize: 13,
+    lineHeight: 19,
   },
   inputGroup: {
     gap: 8,
@@ -335,5 +530,50 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "700",
+  },
+  otpTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  otpSubtitle: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+  },
+  otpContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginVertical: 8,
+    position: "relative",
+  },
+  digitBox: {
+    flex: 1,
+    height: 52,
+    marginHorizontal: 4,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  digitText: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  hiddenOtpInput: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    opacity: 0,
+  },
+  otpActionsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  linkText: {
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

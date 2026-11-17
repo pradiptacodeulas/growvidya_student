@@ -3,7 +3,6 @@ import { apiFetch, setAuthToken } from "./apiClient";
 export interface LoginPayload {
   admission_number?: string;
   email?: string;
-  phone?: string;
   identifier?: string;
   password: string;
 }
@@ -65,16 +64,15 @@ export interface LoginResponse {
 
 export const authService = {
   /**
-   * Student Login via Admission Number / Email / Phone and Password
+   * Student Login via Email or Student ID (Admission Number) and Password
    */
   async login(payload: LoginPayload): Promise<LoginResponse> {
-    const ident = payload.admission_number || payload.email || payload.phone || payload.identifier || "";
+    const ident = (payload.admission_number || payload.email || payload.identifier || "").trim();
     const res = await apiFetch("/student/auth/login", {
       method: "POST",
       body: JSON.stringify({
         admission_number: ident,
         email: ident,
-        phone: ident,
         identifier: ident,
         password: payload.password,
       }),
@@ -98,32 +96,38 @@ export const authService = {
   },
 
   /**
-   * Request 6-digit Passcode for passwordless login
+   * Request 6-digit Email OTP for passwordless login
    */
   async requestPasscode(identifier: string) {
     const res = await apiFetch("/student/auth/request-passcode", {
       method: "POST",
-      body: JSON.stringify({ identifier }),
+      body: JSON.stringify({ identifier: identifier.trim() }),
     });
 
     if (!res.success) {
-      throw new Error(res.message || "Failed to request passcode.");
+      const err: any = new Error(res.message || "Failed to request OTP.");
+      err.emailMissing = Boolean(res.data?.errors?.emailMissing || res.data?.emailMissing);
+      throw err;
     }
 
     return res.data;
   },
 
   /**
-   * Verify 6-digit Passcode for passwordless login
+   * Verify 6-digit Email OTP for passwordless login
    */
   async verifyPasscode(identifier: string, passcode: string): Promise<LoginResponse> {
     const res = await apiFetch("/student/auth/verify-passcode", {
       method: "POST",
-      body: JSON.stringify({ identifier, passcode }),
+      body: JSON.stringify({
+        identifier: identifier.trim(),
+        passcode: passcode.trim(),
+        otp: passcode.trim(),
+      }),
     });
 
     if (!res.success || !res.data) {
-      throw new Error(res.message || "Passcode verification failed.");
+      throw new Error(res.message || "OTP verification failed.");
     }
 
     const token = res.data.token;
@@ -134,9 +138,59 @@ export const authService = {
     return {
       status: true,
       success: true,
-      message: res.message || "Login successful via passcode.",
+      message: res.message || "Login successful via OTP.",
       data: res.data,
     };
+  },
+
+  /**
+   * Step 1: Request Forgot Password 6-digit Email OTP
+   */
+  async requestForgotPasswordOtp(identifier: string) {
+    const res = await apiFetch("/student/auth/forgot-password/request-otp", {
+      method: "POST",
+      body: JSON.stringify({ identifier: identifier.trim() }),
+    });
+
+    if (!res.success) {
+      const err: any = new Error(res.message || "Failed to send password reset OTP.");
+      err.emailMissing = Boolean(res.data?.errors?.emailMissing || res.data?.emailMissing);
+      throw err;
+    }
+
+    return res.data;
+  },
+
+  /**
+   * Step 2: Verify Forgot Password 6-digit Email OTP
+   */
+  async verifyForgotPasswordOtp(identifier: string, otp: string) {
+    const res = await apiFetch("/student/auth/forgot-password/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({ identifier: identifier.trim(), otp: otp.trim() }),
+    });
+
+    if (!res.success || !res.data?.resetToken) {
+      throw new Error(res.message || "Invalid or expired OTP.");
+    }
+
+    return res.data;
+  },
+
+  /**
+   * Step 3: Reset Password using resetToken
+   */
+  async resetPassword(payload: { resetToken: string; newPassword: string; confirmPassword: string }) {
+    const res = await apiFetch("/student/auth/forgot-password/reset", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.success) {
+      throw new Error(res.message || "Failed to reset password.");
+    }
+
+    return res;
   },
 
   /**
@@ -155,9 +209,37 @@ export const authService = {
   },
 
   /**
-   * Change student account password
+   * Request 6-digit Email OTP before changing student password
    */
-  async changePassword(oldPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+  async requestChangePasswordOtp(oldPassword: string, newPassword: string) {
+    const res = await apiFetch("/student/auth/change-password/request-otp", {
+      method: "POST",
+      body: JSON.stringify({
+        oldPassword,
+        newPassword,
+        currentPassword: oldPassword,
+        cur_pass: oldPassword,
+        new_pass: newPassword,
+      }),
+    });
+
+    if (!res.success) {
+      const err: any = new Error(res.message || "Failed to send verification OTP.");
+      err.emailMissing = Boolean(res.data?.errors?.emailMissing || res.data?.emailMissing);
+      throw err;
+    }
+
+    return res.data;
+  },
+
+  /**
+   * Change student account password (with 6-digit Email OTP)
+   */
+  async changePassword(
+    oldPassword: string,
+    newPassword: string,
+    otp: string
+  ): Promise<{ success: boolean; message: string }> {
     const res = await apiFetch("/student/auth/change-password", {
       method: "POST",
       body: JSON.stringify({
@@ -166,6 +248,7 @@ export const authService = {
         currentPassword: oldPassword,
         cur_pass: oldPassword,
         new_pass: newPassword,
+        otp: otp.trim(),
       }),
     });
 

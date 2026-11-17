@@ -28,49 +28,77 @@ const toastConfig: ToastConfig = {
   success: (props) => (
     <BaseToast
       {...props}
+      text1NumberOfLines={2}
+      text2NumberOfLines={4}
       style={{
         borderLeftColor: '#10B981',
         borderRadius: 14,
         height: 'auto',
         minHeight: 56,
-        paddingVertical: 8,
+        width: '92%',
+        paddingVertical: 10,
         backgroundColor: '#FFFFFF',
       }}
-      contentContainerStyle={{ paddingHorizontal: 14 }}
+      contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 2 }}
       text1Style={{ fontSize: 14, fontWeight: '700', color: '#111827' }}
-      text2Style={{ fontSize: 12.5, color: '#4B5563' }}
+      text2Style={{ fontSize: 12.5, lineHeight: 18, color: '#4B5563', marginTop: 2 }}
     />
   ),
   error: (props) => (
     <BaseToast
       {...props}
+      text1NumberOfLines={2}
+      text2NumberOfLines={4}
       style={{
         borderLeftColor: '#EF4444',
         borderRadius: 14,
         height: 'auto',
         minHeight: 56,
-        paddingVertical: 8,
+        width: '92%',
+        paddingVertical: 10,
         backgroundColor: '#FFFFFF',
       }}
-      contentContainerStyle={{ paddingHorizontal: 14 }}
+      contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 2 }}
       text1Style={{ fontSize: 14, fontWeight: '700', color: '#111827' }}
-      text2Style={{ fontSize: 12.5, color: '#4B5563' }}
+      text2Style={{ fontSize: 12.5, lineHeight: 18, color: '#4B5563', marginTop: 2 }}
+    />
+  ),
+  warning: (props) => (
+    <BaseToast
+      {...props}
+      text1NumberOfLines={2}
+      text2NumberOfLines={4}
+      style={{
+        borderLeftColor: '#F59E0B',
+        borderRadius: 14,
+        height: 'auto',
+        minHeight: 56,
+        width: '92%',
+        paddingVertical: 10,
+        backgroundColor: '#FFFFFF',
+      }}
+      contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 2 }}
+      text1Style={{ fontSize: 14, fontWeight: '700', color: '#111827' }}
+      text2Style={{ fontSize: 12.5, lineHeight: 18, color: '#4B5563', marginTop: 2 }}
     />
   ),
   info: (props) => (
     <InfoToast
       {...props}
+      text1NumberOfLines={2}
+      text2NumberOfLines={4}
       style={{
         borderLeftColor: '#3B82F6',
         borderRadius: 14,
         height: 'auto',
         minHeight: 56,
-        paddingVertical: 8,
+        width: '92%',
+        paddingVertical: 10,
         backgroundColor: '#FFFFFF',
       }}
-      contentContainerStyle={{ paddingHorizontal: 14 }}
+      contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 2 }}
       text1Style={{ fontSize: 14, fontWeight: '700', color: '#111827' }}
-      text2Style={{ fontSize: 12.5, color: '#4B5563' }}
+      text2Style={{ fontSize: 12.5, lineHeight: 18, color: '#4B5563', marginTop: 2 }}
     />
   ),
 };
